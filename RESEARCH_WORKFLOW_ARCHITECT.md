@@ -555,23 +555,87 @@ codex exec \
 
 ### Phase 5: Contribution Assessment
 
-**Purpose:** Rigorously evaluate the proposed contribution against the literature.
+**Purpose:** Rigorously evaluate the proposed contribution against the ENTIRE relevant
+literature — not just the 3-4 closest competitors, but every paper in the reference
+corpus and any recent work found via web search.
 
-**The report must specify:**
-- Comparison matrix: proposed results vs. closest existing results
-- Novelty dimensions:
-  - New estimator / new proof technique / new application / new data
-  - Generalization of existing results (which assumptions relaxed?)
-  - Computational innovation (new algorithm, faster convergence?)
-- Significance for target journal:
-  - Does it meet the journal's bar? (compare against objective/ papers)
-  - What makes it publishable vs. incremental?
-- Strengthening strategies if the contribution is marginal:
-  - Additional theoretical results that would strengthen the paper
-  - Empirical applications that would showcase the theory (propose concrete
-    datasets, estimators, and specifications — Phase 7D will detail these proposals)
-  - Monte Carlo designs that demonstrate finite-sample properties
-  - Connections to other literatures
+**This phase must be thorough. A referee from any of the intersecting literatures could
+argue insufficient novelty. The assessment must preempt every such argument.**
+
+**Step 1: Full-corpus comparison matrix.**
+
+Build a comparison table with ALL papers in `raw/reference/` organized by literature
+strand. For each strand, identify the closest competitor(s) and compare on these
+dimensions:
+
+| Dimension | Description |
+|-----------|-------------|
+| Setting | Fixed/growing dimension, cross-section/panel, parametric/semi-parametric |
+| Estimation target | Parameters, functionals, weighting matrix, instruments |
+| Key assumption(s) | What conditions are needed? Which are verifiable? |
+| Theoretical guarantee | Consistency, rate, normality, efficiency, uniformity |
+| Rate conditions | Explicit growth/sparsity/moment conditions |
+| Tail/distributional assumptions | Sub-Gaussian, sub-exponential, heavy-tailed, nonparametric |
+| Adaptivity | Data-driven tuning? Oracle inequalities? Uniform over classes? |
+| Computational method | Optimization algorithm, convergence, scalability |
+| Finite-sample evidence | Simulations? How many DGPs? Realistic? |
+| Empirical application | Domain, data dimension, practical relevance |
+| What this paper adds beyond | The specific gap this paper fills relative to THAT work |
+
+Group by literature strand:
+- (a) Many-moment / many-instrument GMM
+- (b) Precision-based / sparse weighting estimation
+- (c) Sparse precision matrix estimation (graphical models)
+- (d) Regularized GMM / LIML / inverse-problem approaches
+- (e) Robust / heavy-tailed covariance and precision estimation
+- (f) High-dimensional inference and post-selection methods
+
+**Step 2: Targeted web searches for recent competing work.**
+
+Search for papers published 2024-2026 that could overlap with the contribution.
+Use queries like:
+- "sparse GMM weighting matrix" 2024 2025
+- "precision matrix GMM" estimation
+- "graphical LASSO moment conditions"
+- "many moments sparse" estimation 2024
+- "robust precision estimation GMM"
+- "high-dimensional GMM weighting" adaptive
+
+For each paper found: read the abstract, compare contribution claims, assess overlap.
+Add any genuinely competing recent work to the comparison matrix.
+
+**Step 3: Strand-specific referee simulation.**
+
+For each literature strand (a)-(f), simulate a specialist referee:
+- What would a GMM specialist (strand a) object to?
+- What would a graphical models specialist (strand c) find missing?
+- What would a robust statistics specialist (strand e) criticize?
+- What would an applied econometrician ask for?
+
+Write 2-3 likely objections per strand with proposed responses.
+
+**Step 4: Novelty dimensions.**
+- New estimator / new proof technique / new application / new data
+- Generalization of existing results (which assumptions relaxed?)
+- Computational innovation (new algorithm, faster convergence?)
+- Modular design (does the framework accommodate future extensions?)
+
+**Step 5: Significance for target journal.**
+- Does it meet the journal's bar? (compare against objective/ papers)
+- What makes it publishable vs. incremental?
+- Which strand(s) of the contribution are strongest for the target journal?
+
+**Step 6: Strengthening strategies if the contribution is marginal.**
+- Additional theoretical results that would strengthen the paper
+- Empirical applications that would showcase the theory (propose concrete
+  datasets, estimators, and specifications — Phase 7D will detail these proposals)
+- Monte Carlo designs that demonstrate finite-sample properties
+- Connections to other literatures that expand the paper's audience
+- Missing references that should be cited and discussed
+
+**Output:** `workspace/contribution_assessment.json` with: full comparison matrix,
+web search results, strand-specific referee simulations, novelty assessment,
+strengthening strategies, and a ranked list of the paper's strongest selling points.
 
 ### Phase 6: Final Production Plan
 
