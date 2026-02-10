@@ -113,11 +113,14 @@ Before doing anything else:
    {
      "timestamp": "ISO-8601",
      "python_version": "output of python3 --version",
+     "extract_venv_python": "output of extract_venv/bin/python --version",
      "available_tools": {
        "codex": "boolean — check with: which codex",
        "tectonic": "boolean — check with: which tectonic",
        "latexmk": "boolean — check with: which latexmk",
-       "marker": "boolean — check with: python3 -c 'import marker'",
+       "marker": "boolean — check with: extract_venv/bin/python -c 'from marker.converters.pdf import PdfConverter; print(True)'",
+       "pymupdf4llm": "boolean — check with: extract_venv/bin/python -c 'import pymupdf4llm; print(True)'",
+       "pymupdf": "boolean — check with: extract_venv/bin/python -c 'import pymupdf; print(True)'",
        "sympy": "boolean — check with: python3 -c 'import sympy'"
      },
      "disk_free_gb": "df -h . parsed",
@@ -125,6 +128,10 @@ Before doing anything else:
      "ram_gb": "sysctl hw.memsize or /proc/meminfo"
    }
    ```
+   **IMPORTANT:** The `extract_venv/` directory contains a Python 3.11 virtual
+   environment with marker-pdf, pymupdf4llm, and PyMuPDF pre-installed. The system
+   Python is 3.14 which is incompatible with marker-pdf. Always use
+   `extract_venv/bin/python` for PDF extraction tasks.
 
 3. **Read config.yaml** if present. Merge with defaults. Write merged config to
    `workspace/session_config.json` (append to the system info).
@@ -141,58 +148,75 @@ Before doing anything else:
 ### 3B. Document processing (raw/ → cleaned/)
 
 If `cleaned/` already contains files from a previous run, skip extraction and use
-those. Otherwise, process raw/ PDFs and .tex files.
+those. Otherwise, extract all PDFs and .tex files using the pre-built pipeline.
 
-**For PDF files — adapt the ta-llm extraction pipeline:**
+**CRITICAL: Use the pre-built extraction script — do NOT write your own.**
 
-1. **Install dependencies** (in a workspace venv if possible):
-   ```bash
-   python3 -m venv workspace/.venv 2>/dev/null || true
-   source workspace/.venv/bin/activate 2>/dev/null || true
-   pip install marker-pdf pymupdf pyyaml rich 2>/dev/null || true
-   ```
+A complete extraction pipeline already exists at `scripts/extract_pdfs.py`. It
+implements the full ta-llm pipeline with three backends in priority order:
 
-2. **Extract with Marker-PDF** (preferred) or PyMuPDF (fallback):
-   - Convert each PDF to Markdown
-   - Preserve LaTeX equations where possible
-   - Handle multi-column layouts
-   - For documents >30 pages, extract chapter-by-chapter using TOC detection
+1. **Marker-PDF** (deep learning — Meta's open-source surya-ocr + layout analysis)
+   - Equation-aware extraction preserving LaTeX
+   - Multi-column layout detection and reading order
+   - OCR for scanned pages
+   - Table structure recognition
+2. **pymupdf4llm** (rule-based fallback — fast, good for digital PDFs)
+3. **PyMuPDF raw** (last resort — basic text extraction)
 
-3. **Apply regex LaTeX fixes** (adapted from ta-llm `regex_latex_fix.py`):
-   - Fix TeX font encoding artifacts:
-     ```
-     ð → (    Þ → )    þ → +    ¤ → ff    ‰ → ffi    ½ → [    ¼ → =
-     ```
-   - Wrap lone LaTeX commands (`\alpha`, `\beta`, `\hat`, `\sum`, etc.) in `$...$`
-   - Wrap math operators (`E(...)`, `Var(...)`, `Cov(...)`, `plim`, etc.) in `$...$`
-   - Fix convergence arrows: `+d` → `$\xrightarrow{d}$`, `+p` → `$\xrightarrow{p}$`
-   - Detect math regions (`$$...$$`, `$...$`, `\[...\]`) and avoid modifying them
-   - Skip code blocks and YAML front matter
+Plus post-processing: regex LaTeX fixes + equation quality scoring.
 
-4. **Verify equation quality** (adapted from ta-llm `verify_equations.py`):
-   - Count LaTeX equations, raw math patterns, garbled patterns
-   - Quality score per file (0-100): garbled = -5 pts each, raw = -2 pts each
-   - Log quality report to `workspace/extraction_quality.json`
-   - Flag files with quality < 80 for manual review
+**A pre-built Python 3.11 venv with marker-pdf already installed exists at
+`extract_venv/`.** You MUST use this venv — the system Python is 3.14 which is
+incompatible with marker-pdf (Pillow/surya-ocr version constraint conflict).
 
-5. **Write cleaned files** to `cleaned/` with YAML front matter:
-   ```yaml
-   ---
-   source_file: "raw/reference/hansen2022.pdf"
-   source_type: "reference"
-   extraction_method: "marker"
-   extraction_quality: 92
-   page_count: 45
-   title: "Econometrics"
-   authors: ["Bruce Hansen"]
-   ---
-   ```
+**Run the extraction:**
+```bash
+source extract_venv/bin/activate
+python scripts/extract_pdfs.py \
+  --raw-dir raw/ \
+  --cleaned-dir cleaned/ \
+  --quality-file workspace/extraction_quality.json \
+  --textbook-page-limit 50
+```
 
-**For .tex files** (common in draft/):
+This will:
+- Extract all 47 files (PDFs via Marker-PDF, .tex files preserved as-is)
+- Apply regex LaTeX fixes (font encoding artifacts, bare math commands, convergence arrows)
+- Score equation quality per file (0-100)
+- Write cleaned markdown files with YAML frontmatter to `cleaned/`
+- Write detailed quality report to `workspace/extraction_quality.json`
+
+**What the pipeline does for each PDF:**
+1. Marker-PDF converts to markdown with equation preservation and layout analysis
+2. Regex fixes repair font encoding artifacts (ð→(, Þ→), þ→+, ¤→ff, etc.)
+3. Bare LaTeX commands (\alpha, \beta, \hat, \sum, etc.) are wrapped in $...$
+4. Math operators (E(...), Var(...), plim, etc.) are wrapped in math mode
+5. Convergence arrows (+d, +p) are converted to proper LaTeX
+6. Quality scoring: -5 pts per garbled pattern, -2 pts per raw Unicode math
+7. Files with quality < 80 are flagged for manual review
+
+**For .tex files:**
 - Read directly — no extraction needed
-- Parse `\title{}`, `\author{}`, `\begin{theorem}`, `\begin{proof}`, etc.
-- Copy to cleaned/ with appropriate front matter
-- These are already in the target format — preserve exactly
+- LaTeX source wrapped in code fence for preservation
+- Metadata extracted from \title{}, \author{}, etc.
+- Copy to cleaned/ with appropriate frontmatter
+
+**After extraction, verify the quality report:**
+```bash
+python -c "
+import json
+with open('workspace/extraction_quality.json') as f:
+    q = json.load(f)
+print(f'Total files: {q[\"total_files\"]}')
+print(f'Successful: {q[\"successful\"]}')
+print(f'Methods: {q[\"methods_used\"]}')
+print(f'Files needing review: {q[\"files_needing_review\"]}')
+"
+```
+
+If Marker-PDF extraction shows quality issues on specific files, those files will
+have fallback extractions via pymupdf4llm or PyMuPDF raw. The quality report
+tracks which method was used for each file.
 
 ### 3C. Build context analysis
 
@@ -295,7 +319,9 @@ Compare the user's reference/ folder against the literature landscape. Identify:
 ### 4C. Tool and library survey
 
 Identify the best tools for each workflow component:
-- PDF extraction: Marker-PDF, PyMuPDF, Nougat, GROBID
+- PDF extraction: **Marker-PDF already installed** in `extract_venv/` with full
+  pipeline at `scripts/extract_pdfs.py`. No need to research alternatives — the
+  pipeline is pre-built with Marker → pymupdf4llm → PyMuPDF fallback chain.
 - Math verification: SymPy, Lean 4, Mathematica (if available)
 - LaTeX compilation: tectonic, latexmk, pdflatex
 - Bibliography: bibtex, biblatex, crossref API
@@ -313,50 +339,58 @@ time budget, and verification criteria.
 
 ### Phase 0: Environment Bootstrap
 
-**Purpose:** Set up a reproducible Python environment with all dependencies.
+**Purpose:** Verify the pre-installed tools and set up any missing components.
 
 **The report must specify:**
-- Exact `requirements.txt` with pinned versions
-- Bootstrap script (`scripts/bootstrap.sh`):
-  ```bash
-  #!/usr/bin/env bash
-  set -euo pipefail
-  python3 -m venv .venv
-  source .venv/bin/activate
-  pip install --upgrade pip
-  pip install -r requirements.txt
-  # Verify LaTeX compiler
-  which tectonic || brew install tectonic
-  # Verify Codex CLI
-  which codex && echo "Codex available" || echo "Codex not available — will skip adversarial verification"
-  ```
-- Dependencies to install:
+- **Pre-installed extraction venv:** `extract_venv/` already contains Python 3.11
+  with marker-pdf 1.10.2, pymupdf4llm 0.2.9, and PyMuPDF 1.26.7. Do NOT create
+  a new venv — use this one for all PDF extraction.
+- **Pre-built extraction script:** `scripts/extract_pdfs.py` implements the full
+  ta-llm pipeline (Marker → pymupdf4llm → PyMuPDF raw, regex LaTeX fixes,
+  equation quality scoring). Do NOT rewrite the extraction logic.
+- Additional lightweight dependencies for analysis (install in a separate venv
+  or via system pip if available):
   - `sympy>=1.12` — symbolic math verification
-  - `latex2sympy2` — parse LaTeX to SymPy expressions
-  - `marker-pdf` — PDF to Markdown extraction
-  - `pymupdf` — fallback PDF extraction
-  - `rich` — terminal output formatting
-  - `pyyaml` — configuration parsing
   - `textstat` — readability metrics for style matching
   - `bibtexparser` — BibTeX parsing
-  - `requests` — API calls (CrossRef, arXiv)
+- Verify LaTeX compiler:
+  ```bash
+  which tectonic || echo "tectonic not installed — install with: brew install tectonic"
+  ```
+- Verify Codex CLI:
+  ```bash
+  which codex && echo "Codex available" || echo "Codex not available — will skip adversarial verification"
+  ```
 - Bootstrap log: `workspace/bootstrap_log.json`
 
 ### Phase 1: Document Processing
 
 **Purpose:** Convert raw PDFs and .tex files into structured, searchable Markdown
-with clean LaTeX equations.
+with clean LaTeX equations using the deep-learning Marker-PDF pipeline.
+
+**CRITICAL:** Run the pre-built extraction script — do NOT write your own:
+```bash
+source extract_venv/bin/activate
+python scripts/extract_pdfs.py \
+  --raw-dir raw/ --cleaned-dir cleaned/ \
+  --quality-file workspace/extraction_quality.json \
+  --textbook-page-limit 50
+```
 
 **The report must specify:**
-- Adapted ta-llm pipeline architecture (not a copy — adapted for research papers):
-  1. Marker-PDF extraction with equation preservation
-  2. Regex LaTeX fix pass (font artifacts, lone commands, math operators, arrows)
-  3. Equation verification with quality scoring
+- The full extraction pipeline architecture (already implemented in `scripts/extract_pdfs.py`):
+  1. **Marker-PDF** (deep learning, Meta surya-ocr): equation-aware extraction,
+     multi-column layout detection, reading order, OCR for scanned pages
+  2. **pymupdf4llm** (rule-based fallback): fast, good for digital-born PDFs
+  3. **PyMuPDF raw** (last resort): basic text extraction
+  4. **Regex LaTeX fix pass**: font encoding artifacts (ð→(, Þ→), etc.), bare
+     math commands wrapped in $...$, convergence arrows fixed
+  5. **Equation quality scoring**: garbled=-5pts, raw Unicode math=-2pts, per file
 - Extraction quality thresholds (reject < 60, warn < 80, accept >= 80)
 - Handling of .tex files (direct parsing, no extraction needed)
 - Output format: YAML-frontmatter Markdown in cleaned/
-- Fallback chain: Marker → PyMuPDF → raw text + manual flag
-- Code snippets for each pipeline stage
+- Fallback chain: Marker → pymupdf4llm → PyMuPDF raw + manual flag
+- Quality report analysis: which files used which backend, any needing review
 
 ### Phase 2: Ingestion & Familiarization
 
@@ -2099,8 +2133,10 @@ availability, input inventory, checkpoint status, and merged config.
    clearly indicate which components require Codex and what the degraded
    experience looks like.
 
-6. **If a Python package fails to install**, try alternatives:
-   - marker-pdf fails → use pymupdf4llm → use pymupdf → use raw text
+6. **PDF extraction is pre-installed** — `extract_venv/` and `scripts/extract_pdfs.py`
+   are ready to use. The fallback chain (Marker → pymupdf4llm → PyMuPDF raw) is
+   built into the script. Do NOT attempt to install marker-pdf yourself — it
+   requires Python 3.11 (incompatible with system Python 3.14).
    - sympy fails → skip symbolic verification, document the gap
    - tectonic fails → try latexmk → try pdflatex → document manual compilation
 
