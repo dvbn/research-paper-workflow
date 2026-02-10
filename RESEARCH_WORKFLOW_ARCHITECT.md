@@ -404,6 +404,84 @@ writing style, and quality target.
 }
 ```
 
+**textbook_theorem_index.json** (from reference/ — textbooks and handbook chapters):
+
+This is a critical artifact. For each textbook/handbook chapter in reference/:
+1. Read the table of contents and index
+2. Extract every theorem, lemma, proposition, and corollary that is potentially
+   relevant to the draft's proof strategy
+3. For each result, record the **exact statement** (verbatim from the source),
+   the **exact location** (chapter, section, page, theorem number), and the
+   **complete list of conditions/assumptions** required
+
+```json
+{
+  "sources": [
+    {
+      "id": "vanderVaart1998",
+      "title": "Asymptotic Statistics",
+      "type": "textbook",
+      "results": [
+        {
+          "id": "vdV-Thm5.9",
+          "type": "theorem",
+          "number": "Theorem 5.9",
+          "chapter": 5,
+          "page": 52,
+          "name": "Consistency of M-estimators",
+          "statement_verbatim": "Let M_n be random functions and ... [exact text from PDF]",
+          "conditions": [
+            "Compactness of parameter space",
+            "Uniform convergence: sup |M_n - M| -> 0 in probability",
+            "Identifiable separation: M(theta) < M(theta_0) for theta != theta_0"
+          ],
+          "proof_technique": "Argmax continuous mapping",
+          "relevant_to": ["thm:consistency", "thm:uniform_convergence"]
+        },
+        {
+          "id": "vdV-Thm5.21",
+          "type": "theorem",
+          "number": "Theorem 5.21",
+          "chapter": 5,
+          "page": 65,
+          "name": "Asymptotic normality of Z-estimators",
+          "statement_verbatim": "...",
+          "conditions": ["...", "..."],
+          "proof_technique": "Linearization + CLT",
+          "relevant_to": ["thm:asymptotic_normality"]
+        }
+      ]
+    },
+    {
+      "id": "wainwright2019",
+      "title": "High-Dimensional Statistics",
+      "type": "textbook",
+      "results": [...]
+    },
+    {
+      "id": "carrasco_florens_renault2007",
+      "title": "Linear Inverse Problems in Structural Econometrics",
+      "type": "handbook_chapter",
+      "results": [...]
+    }
+  ]
+}
+```
+
+**CRITICAL:** The `statement_verbatim` field must be copied **exactly** from the
+PDF, not paraphrased. This is the ground truth against which all proof citations
+will be verified. If the PDF extraction is unclear, flag it and include the page
+number for human verification.
+
+Build the index by:
+1. Reading each textbook/handbook PDF in raw/reference/
+2. Identifying chapters relevant to the draft's proof strategy (from paper_profile.json)
+3. Extracting theorems with full statements and conditions
+4. Cross-referencing with the draft's theorem inventory to build the `relevant_to` links
+
+This index is used in Phase 7A for proof construction and in the textbook
+citation verification loop.
+
 **style_profile.json** — see Section 8 for full schema.
 
 **quality_bar.json** (from objective/):
@@ -532,15 +610,103 @@ four sub-phases.
    └── ...
    ```
 
-2. **Triple verification protocol for each proof:**
+2. **Proof dependency mapping (before writing any proof):**
 
-   **Layer 1 — Claude writes the proof:**
-   - Full proof with detailed step-by-step comments
-   - Every non-obvious step annotated: `% Step: Apply dominated convergence (Assumption A3 ensures integrability)`
+   Before writing each proof, consult `textbook_theorem_index.json` to build a
+   **proof blueprint**:
+   ```json
+   // workspace/math/blueprint_consistency.json
+   {
+     "theorem": "thm:consistency",
+     "proof_strategy": "M-estimation argmax + uniform LLN",
+     "textbook_results_needed": [
+       {
+         "source": "vanderVaart1998",
+         "result": "Theorem 5.9 (Consistency of M-estimators)",
+         "page": 52,
+         "conditions_to_verify": [
+           "Compactness of parameter space → established in Assumption A1",
+           "Uniform convergence → proved in Lemma 2 using Wainwright Thm 6.2",
+           "Identifiable separation → established in Assumption A3"
+         ]
+       },
+       {
+         "source": "wainwright2019",
+         "result": "Theorem 6.2 (Uniform convergence via covering numbers)",
+         "page": 168,
+         "conditions_to_verify": [
+           "Sub-Gaussian increments → follows from bounded moment conditions"
+         ]
+       }
+     ],
+     "condition_gap_check": "All conditions traceable to paper's assumptions"
+   }
+   ```
+
+3. **Quintuple verification protocol for each proof:**
+
+   **Layer 1 — Claude writes the proof (textbook-grounded):**
+   - Consult the proof blueprint; cite textbook results **by exact theorem number**
+   - Every non-obvious step annotated with its source:
+     `% Step 3: By Theorem 5.9 of van der Vaart (1998, p. 52), consistency follows`
+     `% from (i) compactness (Assumption A1), (ii) uniform convergence (Lemma 2),`
+     `% and (iii) identifiable separation (Assumption A3).`
    - Regularity conditions explicitly invoked at each step
    - Comment level controlled by `proof_comment_level` in config
+   - **Rule:** "By standard arguments" is NEVER acceptable. Every step must name
+     its source or be self-contained within the proof.
 
-   **Layer 2 — SymPy verification script:**
+   **Layer 2 — Textbook citation ground-truth verification:**
+
+   This is the **anti-hallucination layer**. LLMs can confidently cite a theorem
+   that doesn't exist, misstate its conditions, or apply it where it doesn't apply.
+   This step catches all such errors.
+
+   For each textbook/handbook citation in the proof:
+   a. **Re-read the actual source:** Open the PDF of the cited textbook and read
+      the exact page/theorem cited. Extract the verbatim statement.
+   b. **Statement match:** Compare what the proof claims the theorem says vs what
+      it actually says. Flag any mismatch (wrong theorem number, wrong statement,
+      missing qualifications).
+   c. **Condition audit:** Extract the complete list of conditions required by the
+      actual theorem. For EACH condition, verify it is satisfied:
+      - Trace back to a specific assumption in the paper, OR
+      - Trace to a result proved earlier in the paper, OR
+      - Flag as UNVERIFIED GAP
+   d. **Write citation verification report:**
+   ```json
+   // workspace/math/citation_verify_consistency.json
+   {
+     "proof": "proof_consistency.tex",
+     "citations_checked": [
+       {
+         "claimed": "Theorem 5.9 of van der Vaart (1998)",
+         "actual_source_page": 52,
+         "statement_match": true,
+         "conditions_required": [
+           {"condition": "compact parameter space", "satisfied_by": "Assumption A1", "verified": true},
+           {"condition": "uniform convergence", "satisfied_by": "Lemma 2", "verified": true},
+           {"condition": "identifiable separation", "satisfied_by": "Assumption A3", "verified": true}
+         ],
+         "status": "VERIFIED"
+       },
+       {
+         "claimed": "Corollary 6.5 of Wainwright (2019)",
+         "actual_source_page": 175,
+         "statement_match": false,
+         "mismatch_detail": "Proof claims Corollary 6.5 gives rate O(sqrt(log p / n)), but actual statement gives O(sqrt(s log p / n)) where s is sparsity",
+         "status": "MISMATCH — must fix"
+       }
+     ],
+     "overall_status": "NEEDS REVISION"
+   }
+   ```
+
+   **CRITICAL RULE:** Never trust Claude's memory of a theorem. Always re-read
+   the actual PDF source. If the PDF is unavailable or unreadable at the cited
+   page, flag it for human verification — do NOT guess.
+
+   **Layer 3 — SymPy algebraic verification:**
    ```python
    # verify_proof_consistency.py
    import sympy as sp
@@ -571,28 +737,83 @@ four sub-phases.
    }
    ```
 
-   **Layer 3 — Codex adversarial review:**
+   **Layer 4 — Codex adversarial review (logic + citations):**
    ```bash
    codex exec \
      --dangerously-bypass-approvals-and-sandbox \
      --skip-git-repo-check \
      -C "$(pwd)/workspace/math" \
      -o "$(pwd)/workspace/math/review_consistency.md" \
-     "You are a mathematical referee. Read thm_consistency.tex and proof_consistency.tex.
-      Check:
-      1. Is the proof logically complete? Are there gaps?
-      2. Are all regularity conditions correctly invoked?
-      3. Are the convergence arguments rigorous?
+     "You are a mathematical referee with access to the cited textbooks.
+
+      Read thm_consistency.tex, proof_consistency.tex, and
+      citation_verify_consistency.json.
+
+      Also read the following textbook excerpts (provided in workspace/textbook_excerpts/):
+      - vanderVaart1998_thm5.9.txt
+      - wainwright2019_thm6.2.txt
+
+      Perform a RIGOROUS review:
+      1. Is the proof logically complete? Are there gaps between steps?
+      2. For each textbook citation: does the cited result ACTUALLY imply what
+         the proof claims? Are ALL conditions of the cited theorem satisfied?
+      3. Are the convergence arguments rigorous? Rate arguments correct?
       4. Are there issues with measurability, integrability, or uniformity?
+      5. Could a skeptical referee with the cited textbook on their desk find
+         any error or unjustified step?
+
+      Be adversarial. Flag EVERYTHING that is not bulletproof.
       Write a detailed line-by-line review."
    ```
 
-3. **Reconciliation protocol:**
-   - Compare Claude's proof, SymPy results, and Codex review
+   **Layer 5 — Codex independent proof check:**
+
+   A second Codex pass where Codex attempts to **independently verify** the
+   main result using the textbook excerpts, WITHOUT seeing Claude's proof:
+   ```bash
+   codex exec \
+     --dangerously-bypass-approvals-and-sandbox \
+     --skip-git-repo-check \
+     -C "$(pwd)/workspace/math" \
+     -o "$(pwd)/workspace/math/independent_check_consistency.md" \
+     "You are a mathematical economist. You have access to:
+      - thm_consistency.tex (the theorem statement and assumptions)
+      - Textbook excerpts in workspace/textbook_excerpts/
+
+      WITHOUT reading proof_consistency.tex, attempt to prove the theorem
+      yourself using the provided textbook results. Then compare your proof
+      strategy with the one in proof_consistency.tex.
+
+      Report:
+      1. Does your proof strategy match? If not, which is stronger?
+      2. Did you need any conditions not listed in the theorem's assumptions?
+      3. Are there simpler or more standard ways to prove this result?
+      4. Any concerns about the proof in proof_consistency.tex?"
+   ```
+
+4. **Reconciliation protocol:**
+   - Compare: Claude's proof, citation verification, SymPy results, Codex
+     adversarial review, and Codex independent check
    - If all agree: mark as verified
-   - If disagreement: Claude investigates, fixes the proof, re-runs verification
-   - Max 2 reconciliation rounds per proof
+   - If citation mismatch found: fix citation, re-read source, re-verify
+   - If condition gap found: either strengthen paper's assumptions or find a
+     weaker textbook result that applies
+   - If Codex independent check uses a different strategy: evaluate which is
+     stronger and adopt the better approach
+   - If disagreement on logic: Claude investigates with textbook open, fixes
+     the proof, re-runs full verification pipeline
+   - Max 3 reconciliation rounds per proof (increased from 2 due to citation checks)
    - Log all verification results to `workspace/math/verification_log.json`
+
+5. **Textbook excerpt management:**
+
+   To enable Codex (which cannot read PDFs) to verify textbook citations:
+   - For each textbook result cited in any proof, extract the verbatim text
+     to a plain-text file:
+     `workspace/textbook_excerpts/vanderVaart1998_thm5.9.txt`
+   - Include: theorem number, page, full statement, all conditions, and any
+     relevant surrounding discussion (e.g., remarks about sharpness)
+   - These files serve as the shared ground truth for both Claude and Codex
 
 #### Phase 7B: Prose Production
 
@@ -907,22 +1128,43 @@ document that the user can act on later.
 
 **The report must specify four verification passes:**
 
-1. **Codex mathematical audit:**
+1. **Codex mathematical audit (with textbook cross-reference):**
    ```bash
    codex exec \
      --dangerously-bypass-approvals-and-sandbox \
      --skip-git-repo-check \
      -C "$(pwd)/workspace" \
      -o "$(pwd)/workspace/math_audit.md" \
-     "Read paper.tex. Perform a complete mathematical audit:
+     "Read paper.tex and all files in workspace/textbook_excerpts/.
+
+      Perform a complete mathematical audit:
       1. Verify every proof step-by-step
       2. Check all assumptions are stated and invoked correctly
       3. Flag any logical gaps or unjustified claims
       4. Verify convergence rates and order of magnitude arguments
-      5. Check that conditions in theorems are both necessary and sufficient (or flag if only sufficient)"
+      5. Check that conditions in theorems are both necessary and sufficient
+         (or flag if only sufficient)
+      6. FOR EACH TEXTBOOK CITATION in the proofs: read the corresponding
+         excerpt in textbook_excerpts/ and verify that:
+         (a) The cited result is stated correctly in the paper
+         (b) ALL conditions of the cited result are satisfied by the paper's
+             assumptions or previously proved results
+         (c) The cited result actually implies what the proof claims
+      7. Flag any citation where the textbook result is misquoted, applied
+         with insufficient conditions, or used in a context it was not
+         designed for"
    ```
 
-2. **Claude claim verification:**
+2. **Claude textbook citation re-verification (full paper sweep):**
+   - Re-read every textbook/handbook citation in the final paper.tex
+   - For each citation, re-open the actual PDF at the cited page
+   - Verify statement match, condition satisfaction, and correct application
+   - This is a FINAL CHECK independent of the per-proof checks in Phase 7A
+   - Write `workspace/final_citation_audit.json` with pass/fail per citation
+   - **Rule:** Any citation that cannot be verified against the source PDF
+     must be flagged for human review — never leave an unverified citation
+
+3. **Claude claim verification:**
    - For each cited result: is the citation accurate?
    - For each empirical claim: is it supported by the data/tables?
    - For each "well-known" assertion: verify with web search
@@ -1701,12 +1943,70 @@ done
 [ -d "cleaned" ] && [ "$(ls -A cleaned 2>/dev/null)" ] && echo "Cleaned: found (previous run)" || echo "Cleaned: empty (will process)"
 ```
 
-### Step 3: Write session config (1 min)
+### Step 3: Checkpoint detection and resume logic
+
+Check for artifacts from a previous (possibly interrupted) run. The workflow
+saves checkpoints after each major phase. On restart, skip completed phases.
+
+```bash
+# Check for checkpoint file
+if [ -f "workspace/checkpoint.json" ]; then
+  echo "=== PREVIOUS RUN DETECTED ==="
+  cat workspace/checkpoint.json
+  echo ""
+  echo "Will resume from last completed phase."
+fi
+```
+
+The checkpoint file tracks which phases completed successfully:
+```json
+// workspace/checkpoint.json
+{
+  "run_id": "2025-02-10T14:30:00Z",
+  "phases_completed": {
+    "phase_0_bootstrap": {"status": "done", "timestamp": "...", "duration_min": 3},
+    "phase_1_document_processing": {"status": "done", "timestamp": "...", "duration_min": 12},
+    "phase_2_ingestion": {"status": "done", "timestamp": "...", "duration_min": 25},
+    "phase_3_planning": {"status": "in_progress", "timestamp": "...", "started": "..."}
+  },
+  "last_completed_phase": "phase_2_ingestion",
+  "resume_from": "phase_3_planning"
+}
+```
+
+**Resume protocol:**
+- If `checkpoint.json` exists, read `resume_from` and skip to that phase
+- Before skipping, verify the artifacts from completed phases still exist
+  (e.g., `paper_profile.json`, `reference_map.json`, `textbook_theorem_index.json`)
+- If any artifact is missing, re-run that phase
+- If no checkpoint exists, start from the beginning
+
+**Checkpoint writes:** After each phase completes:
+1. Update `workspace/checkpoint.json` with the phase status
+2. Append a progress line to `workspace/progress.jsonl` (for live monitoring)
+3. Save all phase artifacts to their designated locations
+
+**Progress monitoring (live):**
+```bash
+# In another terminal, monitor progress while the workflow runs:
+tail -f workspace/progress.jsonl
+```
+
+The `progress.jsonl` file has one JSON line per completed step:
+```jsonl
+{"time": "2025-02-10T14:33:00Z", "phase": "0", "step": "bootstrap", "status": "done", "msg": "Environment ready"}
+{"time": "2025-02-10T14:45:00Z", "phase": "1", "step": "pdf_processing", "status": "done", "msg": "Processed 12 PDFs"}
+{"time": "2025-02-10T15:10:00Z", "phase": "2", "step": "ingestion", "status": "done", "msg": "Built 4 profiles + textbook index"}
+{"time": "2025-02-10T15:12:00Z", "phase": "7A", "step": "proof_thm1", "status": "in_progress", "msg": "Writing proof of Theorem 1"}
+{"time": "2025-02-10T15:25:00Z", "phase": "7A", "step": "proof_thm1_citation_check", "status": "done", "msg": "3 citations verified, 0 mismatches"}
+```
+
+### Step 4: Write session config (1 min)
 
 Write `workspace/session_config.json` with all collected system info, tool
-availability, input inventory, and merged config.
+availability, input inventory, checkpoint status, and merged config.
 
-### Step 4: Begin analysis (proceed to Section 3)
+### Step 5: Begin analysis (proceed to Section 3, or resume from checkpoint)
 
 ---
 
@@ -1768,15 +2068,22 @@ availability, input inventory, and merged config.
     matching loop must be rigorous. This is not optional.
 
 13. **Mathematical rigor is non-negotiable.** Every proof must be verified by
-    at least two independent methods (SymPy + Codex, or SymPy + Claude self-check,
-    or Codex + Claude self-check). Single-method verification is insufficient for
-    publication-quality proofs.
+    at least three independent methods: textbook citation ground-truth check,
+    SymPy algebraic verification, and Codex adversarial review. Single-method
+    verification is insufficient for publication-quality proofs.
 
-14. **Log everything.** At the `standard` log level, every phase should produce
+14. **Never trust LLM memory of a theorem.** When citing a textbook result in
+    a proof, ALWAYS re-read the actual source PDF at the cited page. Verify:
+    (a) the theorem exists at the stated location, (b) the statement matches
+    what is claimed, (c) ALL conditions are satisfied. LLMs confidently
+    hallucinate theorem numbers, misstate conditions, and misapply results.
+    A referee with the book on their desk will catch this instantly.
+
+15. **Log everything.** At the `standard` log level, every phase should produce
     a structured JSON log. The summary log must give a clear picture of what was
     done, what succeeded, and what needs attention.
 
-15. **The config.yaml is optional.** If absent, infer all settings from the raw/
+16. **The config.yaml is optional.** If absent, infer all settings from the raw/
     contents. The system must be fully autonomous even with zero configuration.
 
 ---
