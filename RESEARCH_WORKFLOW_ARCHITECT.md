@@ -490,7 +490,9 @@ codex exec \
   - What makes it publishable vs. incremental?
 - Strengthening strategies if the contribution is marginal:
   - Additional theoretical results that would strengthen the paper
-  - Empirical extensions
+  - Empirical applications that would showcase the theory (propose concrete
+    datasets, estimators, and specifications — Phase 7D will detail these proposals)
+  - Monte Carlo designs that demonstrate finite-sample properties
   - Connections to other literatures
 
 ### Phase 6: Final Production Plan
@@ -503,14 +505,16 @@ into a final actionable blueprint.
   - Section-by-section writing plan with target word counts
   - Theorem-by-theorem production plan with verification strategy
   - Literature integration plan (which references go where)
-  - Empirical analysis plan (data, estimation, tables, figures)
+  - Empirical avenues plan: proposed applications, datasets, and Monte Carlo
+    designs that connect to the theory (Phase 7D will develop these proposals
+    into a detailed document the user can act on)
   - Timeline with dependencies (which sections must be written first)
 - Decision log: which critique points were accepted vs. rejected, and why
 
 ### Phase 7: Production (the core writing phase)
 
 This is the largest phase. The report must provide detailed specifications for
-three sub-phases.
+four sub-phases.
 
 #### Phase 7A: Mathematical Production
 
@@ -664,6 +668,115 @@ three sub-phases.
    - Check that the introduction promises what the paper delivers
    - Check that the conclusion matches the results
 
+#### Phase 7D: Empirical Avenues & Applications Design
+
+**Purpose:** Identify and propose empirical applications, data analyses, or
+Monte Carlo designs that connect to the theoretical results. This phase does
+**NOT** execute any code or run any analysis — it produces a detailed proposal
+document that the user can act on later.
+
+**The report must specify:**
+
+1. **Scope determination (from context_analysis.json):**
+
+   The workflow must detect which case applies:
+
+   **Case A — Draft already contains empirical work:**
+   - Map existing empirical specifications to the theoretical model: which theorem
+     does each regression/test correspond to? Are the moment conditions correct?
+   - Identify gaps: theoretical predictions that have no empirical counterpart
+   - Propose improvements to existing analysis:
+     - Additional robustness checks referees will ask for
+     - Alternative specifications that better match the theory's assumptions
+     - Missing standard error corrections (clustering, HAC, bootstrap)
+     - Specification tests implied by the model (overidentification, Hausman, etc.)
+   - Propose extensions: additional datasets, sample periods, or subgroup analyses
+     that would showcase the estimator's properties
+
+   **Case B — Draft is pure theory, no empirical component:**
+   - Propose 2-3 fitting empirical applications based on the theoretical results
+   - For each proposal, specify:
+     - Which theoretical result it illustrates
+     - Candidate datasets (public: FRED, Penn World Table, IPUMS, replication
+       packages from published papers, etc.) with download URLs or DOIs
+     - Estimator and specification: what to estimate, which variables, which
+       instruments (if applicable)
+     - Expected results: what the theory predicts the empirical exercise should find
+     - Feasibility assessment: data availability, sample size, computational cost
+   - Propose Monte Carlo simulation designs:
+     - DGP specifications that match the model's assumptions
+     - Sample sizes to illustrate finite-sample vs. asymptotic behavior
+     - Comparison estimators (what should the proposed estimator beat?)
+     - Metrics: bias, RMSE, size, power, coverage probability
+
+   **Case C — Draft includes Monte Carlo simulations:**
+   - Assess whether the simulation design adequately tests the theory
+   - Propose improvements: additional DGPs, boundary cases, misspecification
+     scenarios, power analysis, larger sample sizes
+   - Suggest empirical applications that would complement the simulations
+
+2. **Output: `workspace/empirical_avenues.md`**
+
+   This is a structured proposal document (not code), organized as:
+
+   ```markdown
+   # Empirical Avenues and Applications
+
+   ## Theory-to-Empirics Map
+   | Theorem/Result | Empirical Implication | Current Status | Proposed Action |
+   |---|---|---|---|
+   | Thm 1: Consistency | Estimator converges with N | Not tested | Monte Carlo |
+   | Thm 2: Asymptotic normality | CI coverage → 95% | Partially tested | Improve DGP |
+   | Prop 3: Efficiency gain | Beat OLS in RMSE | Not shown | Add comparison |
+
+   ## Proposed Application 1: [Title]
+   - **Connection to theory:** Which result this illustrates
+   - **Dataset:** Name, source, URL/DOI, key variables
+   - **Specification:** Model to estimate, moment conditions, instruments
+   - **Expected findings:** What the theory predicts
+   - **Feasibility:** Data access, sample size, computation
+
+   ## Proposed Application 2: [Title]
+   ...
+
+   ## Proposed Monte Carlo Design
+   - **DGP specifications:** Mathematical description of each scenario
+   - **Sample sizes:** [100, 500, 1000, 5000] or as theory requires
+   - **Comparison estimators:** OLS, standard GMM, MLE, etc.
+   - **Metrics:** Bias, RMSE, size (at 5%), power, coverage
+   - **Number of replications:** 1000-5000
+
+   ## Improvements to Existing Analysis
+   - [Specific improvement with justification]
+   ...
+
+   ## Robustness Checks Referees Will Request
+   - [Check with rationale]
+   ...
+   ```
+
+3. **Codex review of empirical proposals:**
+   ```bash
+   codex exec \
+     --dangerously-bypass-approvals-and-sandbox \
+     --skip-git-repo-check \
+     -C "$(pwd)/workspace" \
+     -o "$(pwd)/workspace/empirical_review.md" \
+     "Read empirical_avenues.md and context_analysis.json.
+      Review the proposed empirical applications:
+      1. Do the proposals correctly operationalize the theoretical results?
+      2. Are the suggested datasets appropriate and accessible?
+      3. Are there identification concerns the proposals overlook?
+      4. What additional robustness checks would a referee request?
+      5. Are the Monte Carlo designs adequate to demonstrate the claimed properties?"
+   ```
+
+4. **Web search for related empirical work:**
+   - Search for papers that have applied similar estimators/methods empirically
+   - Identify replication packages that could provide suitable datasets
+   - Find recent empirical applications in the same domain
+   - Add findings to `workspace/empirical_avenues.md`
+
 ### Phase 8: Adversarial Verification
 
 **Purpose:** Final adversarial audit of the complete paper.
@@ -786,6 +899,7 @@ three sub-phases.
    ├── phase_7a_math.json
    ├── phase_7b_prose.json
    ├── phase_7c_integration.json
+   ├── phase_7d_empirical.json
    ├── phase_8_verification.json
    ├── phase_9_latex.json
    └── token_usage.json
@@ -1254,6 +1368,8 @@ workspace/                          # All intermediate artifacts
 │   ├── verify_*.py                 # SymPy verification scripts
 │   ├── review_*.md                 # Codex proof reviews
 │   └── verification_log.json       # Math verification results
+├── empirical_avenues.md            # Proposed applications & analyses (Phase 7D)
+├── empirical_review.md             # Codex review of empirical proposals
 ├── sections/                       # Section .tex files
 │   └── NN_section_name.tex
 ├── paper.tex                       # Assembled paper
