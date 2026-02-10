@@ -715,9 +715,9 @@ document that the user can act on later.
      scenarios, power analysis, larger sample sizes
    - Suggest empirical applications that would complement the simulations
 
-2. **Output: `workspace/empirical_avenues.md`**
+2. **Output 1: `workspace/empirical_avenues.md`** — Proposed applications
 
-   This is a structured proposal document (not code), organized as:
+   A structured proposal for empirical applications (not code):
 
    ```markdown
    # Empirical Avenues and Applications
@@ -725,9 +725,9 @@ document that the user can act on later.
    ## Theory-to-Empirics Map
    | Theorem/Result | Empirical Implication | Current Status | Proposed Action |
    |---|---|---|---|
-   | Thm 1: Consistency | Estimator converges with N | Not tested | Monte Carlo |
-   | Thm 2: Asymptotic normality | CI coverage → 95% | Partially tested | Improve DGP |
-   | Prop 3: Efficiency gain | Beat OLS in RMSE | Not shown | Add comparison |
+   | Thm 1: Consistency | Estimator converges with N | Not tested | Simulation |
+   | Thm 2: Asymptotic normality | CI coverage → 95% | Partial | Improve DGP |
+   | Prop 3: Efficiency gain | Beat OLS in RMSE | Not shown | Comparison |
 
    ## Proposed Application 1: [Title]
    - **Connection to theory:** Which result this illustrates
@@ -739,14 +739,7 @@ document that the user can act on later.
    ## Proposed Application 2: [Title]
    ...
 
-   ## Proposed Monte Carlo Design
-   - **DGP specifications:** Mathematical description of each scenario
-   - **Sample sizes:** [100, 500, 1000, 5000] or as theory requires
-   - **Comparison estimators:** OLS, standard GMM, MLE, etc.
-   - **Metrics:** Bias, RMSE, size (at 5%), power, coverage
-   - **Number of replications:** 1000-5000
-
-   ## Improvements to Existing Analysis
+   ## Improvements to Existing Analysis (if draft has one)
    - [Specific improvement with justification]
    ...
 
@@ -755,27 +748,158 @@ document that the user can act on later.
    ...
    ```
 
-3. **Codex review of empirical proposals:**
+3. **Output 2: `workspace/simulation_design.md`** — Detailed Monte Carlo design
+
+   This is a standalone, comprehensive simulation proposal. It must be detailed
+   enough that a research assistant could implement it without additional
+   guidance. The design must be grounded in (a) the paper's theoretical results
+   and (b) simulation practices in comparable published papers.
+
+   ```markdown
+   # Monte Carlo Simulation Design
+
+   ## Literature Basis
+   Describe 3-5 published papers with comparable Monte Carlo exercises.
+   For each: citation, what they simulate, DGP choices, sample sizes,
+   metrics reported, and what we adopt or adapt from their design.
+
+   ## Simulation Objectives
+   For each theoretical result, state precisely what the simulation must
+   demonstrate:
+   | Result | What to show | Success criterion |
+   |---|---|---|
+   | Consistency (Thm 1) | Bias → 0 as n grows | Bias < 0.01 at n=5000 |
+   | √n-rate (Thm 1) | Bias × √n stabilizes | Ratio stable across n |
+   | Asymptotic normality (Thm 2) | CI coverage → 0.95 | Coverage in [0.93, 0.97] |
+   | Efficiency (Prop 3) | RMSE < competitor | RMSE ratio < 1 for all DGPs |
+
+   ## Data Generating Processes
+
+   ### DGP 1: Baseline (satisfies all assumptions)
+   - **Model:** Full mathematical specification
+     - $Y_i = X_i'\theta_0 + \varepsilon_i$, where ...
+     - Distribution of $X_i$: ...
+     - Distribution of $\varepsilon_i$: ...
+     - True parameter values: $\theta_0 = (...)$
+   - **Why this DGP:** Matches Assumptions A1-A4 exactly; baseline for
+     verifying that the estimator works under ideal conditions
+   - **Reference:** Adapted from [Author (Year), Section N]
+
+   ### DGP 2: Heavy tails
+   - **Model:** Same as DGP 1 but $\varepsilon_i \sim t(5)$
+   - **Why this DGP:** Tests robustness to Assumption A3 (finite moments);
+     many empirical datasets exhibit heavy tails
+   - **Reference:** Standard in [Author (Year)]
+
+   ### DGP 3: Heteroskedasticity
+   - **Model:** $\varepsilon_i = \sigma(X_i) \cdot u_i$ where ...
+   - **Why this DGP:** Tests whether the estimator and its variance
+     estimator remain valid under heteroskedasticity
+
+   ### DGP 4: Weak instruments / weak identification (if applicable)
+   - **Model:** ...
+   - **Why this DGP:** Tests behavior when identification is marginal;
+     first-stage F-statistic ~ 10
+
+   ### DGP 5: Misspecification
+   - **Model:** Violates Assumption A2 (e.g., omitted nonlinearity)
+   - **Why this DGP:** Shows what happens when the model is wrong;
+     referee will want to see this
+
+   ### DGP 6: High-dimensional / many parameters (if relevant)
+   - **Model:** p/n ratio = 0.1, 0.3, 0.5
+   - **Why this DGP:** Tests finite-sample performance as dimensionality
+     grows relative to sample size
+
+   (Add or remove DGPs based on the specific theory. Every DGP must be
+   justified by either the paper's assumptions or by published precedent.)
+
+   ## Estimators to Compare
+   | Estimator | Description | Why include |
+   |---|---|---|
+   | Proposed | The paper's estimator | Main object |
+   | OLS | Ordinary least squares | Baseline comparator |
+   | Standard GMM | Unpenalized GMM | Shows value of penalization |
+   | Oracle | Estimator with known true model | Efficiency bound |
+   | [Other] | ... | ... |
+
+   ## Sample Sizes
+   - n ∈ {100, 250, 500, 1000, 2500, 5000}
+   - Justification: n=100 for finite-sample stress test; n=5000 to verify
+     asymptotic behavior; intermediate values to trace convergence path
+   - If the theory has a specific rate (e.g., n^{2/3}), choose n to make
+     the rate visible in log-log plots
+
+   ## Number of Replications
+   - R = 2000 (standard) or R = 5000 (if confidence intervals on simulation
+     metrics are needed)
+   - Justification: R=2000 gives Monte Carlo standard error of ~0.005 for
+     coverage probability estimates (sufficient for 2-decimal reporting)
+
+   ## Metrics and Reporting
+
+   ### Per-estimator, per-DGP, per-n:
+   | Metric | Formula | What it shows |
+   |---|---|---|
+   | Bias | $\frac{1}{R}\sum_{r=1}^R (\hat\theta_r - \theta_0)$ | Centering |
+   | Std Dev | $\sqrt{\frac{1}{R-1}\sum(\hat\theta_r - \bar{\hat\theta})^2}$ | Dispersion |
+   | RMSE | $\sqrt{\text{Bias}^2 + \text{Var}}$ | Overall accuracy |
+   | MAE | $\frac{1}{R}\sum|\hat\theta_r - \theta_0|$ | Robust accuracy |
+   | Coverage (95%) | Fraction of CIs containing $\theta_0$ | Inference validity |
+   | Avg CI length | Mean confidence interval width | Efficiency of inference |
+   | Size (5%) | Rejection rate under H0 | Type I error control |
+   | Power | Rejection rate under H1 (specific alternative) | Sensitivity |
+
+   ### Reporting format:
+   - **Table 1:** Bias and RMSE across n, one panel per DGP
+   - **Table 2:** Coverage and average CI length across n
+   - **Table 3:** Size and power (if testing is relevant)
+   - **Figure 1:** Bias × √n vs. n (should flatten if √n-consistent)
+   - **Figure 2:** QQ-plot of $\sqrt{n}(\hat\theta - \theta_0)/\hat\sigma$
+     vs. N(0,1) for selected (n, DGP) combinations
+   - **Figure 3:** Kernel density of estimator distribution overlaid with
+     asymptotic normal, for selected n values
+   - **Figure 4:** RMSE ratio (proposed/competitor) across n and DGPs
+
+   ## Computational Notes
+   - Estimated runtime per (DGP, n, R=2000) combination
+   - Parallelization strategy (embarrassingly parallel across replications)
+   - Random seed protocol for reproducibility
+   - Language recommendation (Python/R/Julia) based on available packages
+   ```
+
+   **How to build this design:**
+   - Start from the paper's theorems: each theorem implies a specific simulation
+     objective and success criterion
+   - Search the literature for published Monte Carlo designs in comparable papers
+     (same estimator class, same asymptotic framework)
+   - Adopt standard DGPs from those papers as baselines, then add DGPs that
+     specifically test the paper's novel assumptions or results
+   - Every design choice (DGP, sample size, metric) must cite either a theorem
+     from the paper or a precedent from the literature
+
+4. **Codex review of proposals:**
    ```bash
    codex exec \
      --dangerously-bypass-approvals-and-sandbox \
      --skip-git-repo-check \
      -C "$(pwd)/workspace" \
      -o "$(pwd)/workspace/empirical_review.md" \
-     "Read empirical_avenues.md and context_analysis.json.
-      Review the proposed empirical applications:
-      1. Do the proposals correctly operationalize the theoretical results?
-      2. Are the suggested datasets appropriate and accessible?
-      3. Are there identification concerns the proposals overlook?
-      4. What additional robustness checks would a referee request?
-      5. Are the Monte Carlo designs adequate to demonstrate the claimed properties?"
+     "Read simulation_design.md, empirical_avenues.md, and context_analysis.json.
+      Review:
+      1. Do the DGPs adequately test each theoretical result?
+      2. Are there missing DGPs a referee would expect (misspecification, boundary cases)?
+      3. Are the metrics and sample sizes standard for this literature?
+      4. Do the proposed empirical applications correctly operationalize the theory?
+      5. Are the suggested datasets appropriate and accessible?
+      6. What would a referee's first objection be to this simulation design?"
    ```
 
-4. **Web search for related empirical work:**
-   - Search for papers that have applied similar estimators/methods empirically
-   - Identify replication packages that could provide suitable datasets
-   - Find recent empirical applications in the same domain
-   - Add findings to `workspace/empirical_avenues.md`
+5. **Web search for simulation precedents:**
+   - Search for Monte Carlo designs in papers using the same estimator class
+   - Search for simulation studies in the target journal (recent 3 years)
+   - Identify standard DGP choices and reporting conventions in the field
+   - Add findings and citations to `workspace/simulation_design.md`
 
 ### Phase 8: Adversarial Verification
 
@@ -1368,8 +1492,9 @@ workspace/                          # All intermediate artifacts
 │   ├── verify_*.py                 # SymPy verification scripts
 │   ├── review_*.md                 # Codex proof reviews
 │   └── verification_log.json       # Math verification results
-├── empirical_avenues.md            # Proposed applications & analyses (Phase 7D)
-├── empirical_review.md             # Codex review of empirical proposals
+├── empirical_avenues.md            # Proposed applications & data analyses (Phase 7D)
+├── simulation_design.md            # Detailed Monte Carlo design (Phase 7D)
+├── empirical_review.md             # Codex review of proposals (Phase 7D)
 ├── sections/                       # Section .tex files
 │   └── NN_section_name.tex
 ├── paper.tex                       # Assembled paper
